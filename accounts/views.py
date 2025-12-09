@@ -7,6 +7,7 @@ from .serializers import (
     ActivateWithRobinhoSerializer,
     LoginSerializer,
     UserSerializer,
+    ChangePasswordSerializer,
 )
 from django.contrib.auth import get_user_model
 
@@ -55,3 +56,20 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/accounts/change-password/
+    body: { old_password, new_password, new_password_confirm }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Senha alterada com sucesso."})

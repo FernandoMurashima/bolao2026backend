@@ -68,3 +68,43 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Usuário inativo.")
         attrs["user"] = user
         return attrs
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if user is None or not user.is_authenticated:
+            raise serializers.ValidationError("Usuário não autenticado.")
+
+        old_password = attrs.get("old_password")
+        new_password = attrs.get("new_password")
+        new_password_confirm = attrs.get("new_password_confirm")
+
+        if not user.check_password(old_password):
+            raise serializers.ValidationError({"old_password": "Senha atual incorreta."})
+
+        if new_password != new_password_confirm:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Confirmação diferente da nova senha."}
+            )
+
+        if len(new_password) < 8:
+            raise serializers.ValidationError(
+                {"new_password": "A nova senha deve ter pelo menos 8 caracteres."}
+            )
+
+        return attrs
+
+    def save(self, **kwargs):
+        request = self.context.get("request")
+        user = request.user
+        new_password = self.validated_data["new_password"]
+        user.set_password(new_password)
+        user.save()
+        return user

@@ -1,15 +1,10 @@
 from collections import defaultdict
 
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import permissions, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from rest_framework import viewsets, permissions
-from django_filters.rest_framework import DjangoFilterBackend
-
-from .models import Match
-from .serializers import MatchSerializer
 
 from .models import (
     Tournament,
@@ -42,11 +37,18 @@ class StageViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class MatchViewSet(viewsets.ModelViewSet):
-    queryset = (
-        Match.objects.select_related("tournament", "stage", "home_team", "away_team")
-        .all()
-        .order_by("kickoff", "id")
-    )
+    """
+    /api/copa/matches/
+
+    Aceita filtros flexíveis:
+      - ?tournament=ID
+      - ?stage=ID
+      - ?stage__order=N
+      - ?stage_order=N
+      - ?stageOrder=N
+      - ?group_name=A
+    """
+
     serializer_class = MatchSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -57,6 +59,43 @@ class MatchViewSet(viewsets.ModelViewSet):
         "group_name": ["exact"],
     }
     http_method_names = ["get", "patch", "head", "options"]
+
+    def get_queryset(self):
+        qs = (
+            Match.objects.select_related(
+                "tournament", "stage", "home_team", "away_team"
+            )
+            .all()
+            .order_by("kickoff", "id")
+        )
+
+        params = self.request.query_params
+
+        # torneio
+        tournament_id = params.get("tournament")
+        if tournament_id:
+            qs = qs.filter(tournament_id=tournament_id)
+
+        # por ID de stage (ex.: stage=2)
+        stage_id = params.get("stage")
+        if stage_id:
+            qs = qs.filter(stage_id=stage_id)
+
+        # por ordem da fase (ex.: stage__order=2, stage_order=2, stageOrder=2)
+        stage_order = (
+            params.get("stage__order")
+            or params.get("stage_order")
+            or params.get("stageOrder")
+        )
+        if stage_order:
+            qs = qs.filter(stage__order=stage_order)
+
+        # por grupo (só faz sentido na fase de grupos)
+        group_name = params.get("group_name")
+        if group_name:
+            qs = qs.filter(group_name=group_name)
+
+        return qs
 
     def partial_update(self, request, *args, **kwargs):
         """
