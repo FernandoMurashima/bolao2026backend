@@ -7,7 +7,10 @@ from copa.models import Tournament, Stage, Match
 
 
 class Command(BaseCommand):
-    help = "Gera automaticamente os jogos das fases eliminatórias a partir dos resultados da fase de grupos."
+    help = (
+        "Gera automaticamente os jogos das fases eliminatórias.\n"
+        "Use --tournament-id=<id> e --fase=oitavas|quartas|semifinal|final."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -16,10 +19,21 @@ class Command(BaseCommand):
             default=None,
             help="ID do Tournament. Se omitido e houver só um torneio, usa esse.",
         )
+        parser.add_argument(
+            "--fase",
+            type=str,
+            help="Fase a gerar: oitavas, quartas, semifinal ou final.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         tournament = self._get_tournament(options.get("tournament_id"))
+        fase = (options.get("fase") or "").lower().strip()
+
+        if fase not in ("oitavas", "quartas", "semifinal", "final"):
+            raise CommandError(
+                "Informe --fase=oitavas|quartas|semifinal|final"
+            )
 
         group_stage = self._get_stage(tournament, order=1)
         round32_stage = self._get_stage(tournament, order=2)
@@ -27,47 +41,98 @@ class Command(BaseCommand):
         semi_stage = self._get_stage(tournament, order=4)
         final_stage = self._get_stage(tournament, order=5)
 
-        # 1) Gera Round-of-32 (oitavas do bolão) a partir da fase de grupos
-        if not Match.objects.filter(tournament=tournament, stage=round32_stage).exists():
-            self.stdout.write("Gerando Round-of-32 a partir da fase de grupos...")
+        # -------- OITAVAS (ROUND-OF-32) --------
+        if fase == "oitavas":
+            if Match.objects.filter(
+                tournament=tournament, stage=round32_stage
+            ).exists():
+                raise CommandError(
+                    "Já existem jogos cadastrados para as oitavas (Round-of-32) deste torneio."
+                )
+
+            self.stdout.write(
+                "Gerando Round-of-32 (oitavas) a partir da fase de grupos..."
+            )
             self._assert_all_decided(tournament, group_stage)
             self._generate_round32_from_groups(
                 tournament, group_stage, round32_stage
             )
-            self.stdout.write(self.style.SUCCESS("Round-of-32 gerado."))
+            self.stdout.write(
+                self.style.SUCCESS("Round-of-32 (oitavas) gerado.")
+            )
+            return
 
-        # 2) Gera quartas a partir do Round-of-32
-        if (
-            Match.objects.filter(tournament=tournament, stage=round32_stage).exists()
-            and not Match.objects.filter(
+        # -------- QUARTAS --------
+        if fase == "quartas":
+            if not Match.objects.filter(
+                tournament=tournament, stage=round32_stage
+            ).exists():
+                raise CommandError(
+                    "Não há jogos de oitavas (Round-of-32) cadastrados para este torneio."
+                )
+
+            if Match.objects.filter(
                 tournament=tournament, stage=quarter_stage
-            ).exists()
-        ):
-            self.stdout.write("Gerando quartas de final a partir do Round-of-32...")
+            ).exists():
+                raise CommandError(
+                    "Já existem jogos cadastrados para as quartas deste torneio."
+                )
+
+            self.stdout.write(
+                "Gerando quartas de final a partir das oitavas..."
+            )
             self._assert_all_decided(tournament, round32_stage)
             self._generate_next_knockout_stage(
                 tournament, round32_stage, quarter_stage
             )
             self.stdout.write(self.style.SUCCESS("Quartas geradas."))
+            return
 
-        # 3) Gera semifinais a partir das quartas
-        if (
-            Match.objects.filter(tournament=tournament, stage=quarter_stage).exists()
-            and not Match.objects.filter(tournament=tournament, stage=semi_stage).exists()
-        ):
-            self.stdout.write("Gerando semifinais a partir das quartas...")
+        # -------- SEMIFINAL --------
+        if fase == "semifinal":
+            if not Match.objects.filter(
+                tournament=tournament, stage=quarter_stage
+            ).exists():
+                raise CommandError(
+                    "Não há jogos de quartas cadastrados para este torneio."
+                )
+
+            if Match.objects.filter(
+                tournament=tournament, stage=semi_stage
+            ).exists():
+                raise CommandError(
+                    "Já existem jogos cadastrados para as semifinais deste torneio."
+                )
+
+            self.stdout.write(
+                "Gerando semifinais a partir das quartas..."
+            )
             self._assert_all_decided(tournament, quarter_stage)
             self._generate_next_knockout_stage(
                 tournament, quarter_stage, semi_stage
             )
             self.stdout.write(self.style.SUCCESS("Semifinais geradas."))
+            return
 
-        # 4) Gera final + disputa de 3º a partir das semifinais
-        if (
-            Match.objects.filter(tournament=tournament, stage=semi_stage).exists()
-            and not Match.objects.filter(tournament=tournament, stage=final_stage).exists()
-        ):
-            self.stdout.write("Gerando final e disputa de 3º lugar...")
+        # -------- FINAL + 3º LUGAR --------
+        if fase == "final":
+            if not Match.objects.filter(
+                tournament=tournament, stage=semi_stage
+            ).exists():
+                raise CommandError(
+                    "Não há jogos de semifinais cadastrados para este torneio."
+                )
+
+            if Match.objects.filter(
+                tournament=tournament, stage=final_stage
+            ).exists():
+                raise CommandError(
+                    "Já existem jogos cadastrados para a fase final deste torneio."
+                )
+
+            self.stdout.write(
+                "Gerando final e disputa de 3º lugar a partir das semifinais..."
+            )
             self._assert_all_decided(tournament, semi_stage)
             self._generate_final_and_third(
                 tournament, semi_stage, final_stage
@@ -75,6 +140,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS("Final e jogo de 3º lugar gerados.")
             )
+            return
 
     def _get_tournament(self, tournament_id):
         qs = Tournament.objects.all()
@@ -269,7 +335,7 @@ class Command(BaseCommand):
         existing = Match.objects.filter(tournament=tournament, stage=to_stage)
         if existing.exists():
             raise CommandError(
-                f"Já existem jogos cadastrados para a fase '{to_stage.name}'."
+                f"Já existem jogos cadastrados para a fase '{to_stage.name}' deste torneio."
             )
 
         new_idx = 0
@@ -305,7 +371,7 @@ class Command(BaseCommand):
         existing = Match.objects.filter(tournament=tournament, stage=final_stage)
         if existing.exists():
             raise CommandError(
-                f"Já existem jogos cadastrados para a fase '{final_stage.name}'."
+                f"Já existem jogos cadastrados para a fase '{final_stage.name}' deste torneio."
             )
 
         base_dt = final_stage.deadline or semi_stage.deadline or timezone.now()
@@ -347,7 +413,11 @@ class Command(BaseCommand):
             raise CommandError(
                 f"Jogo id={match.id} terminou empatado. Defina um critério (pênaltis) antes de gerar a fase seguinte."
             )
-        return match.home_team if match.home_score > match.away_score else match.away_team
+        return (
+            match.home_team
+            if match.home_score > match.away_score
+            else match.away_team
+        )
 
     def _loser_from_match(self, match: Match):
         if match.home_score is None or match.away_score is None:
@@ -358,4 +428,8 @@ class Command(BaseCommand):
             raise CommandError(
                 f"Jogo id={match.id} terminou empatado. Defina um critério (pênaltis) antes de gerar a fase seguinte."
             )
-        return match.away_team if match.home_score > match.away_score else match.home_team
+        return (
+            match.away_team
+            if match.home_score > match.away_score
+            else match.home_team
+        )

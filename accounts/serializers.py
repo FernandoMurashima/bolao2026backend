@@ -10,7 +10,81 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "first_name", "last_name", "email"]
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "is_superuser",
+            "is_staff",
+            "is_active",
+        ]
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """
+    Serializer para administração de usuários (apenas superuser).
+    Permite criar/editar e trocar senha.
+    """
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "is_active",
+            "is_superuser",
+            "password",
+        ]
+
+    def create(self, validated_data):
+        password = validated_data.pop("password", "")
+        if not password:
+            raise serializers.ValidationError(
+                {"password": "Senha obrigatória para novo usuário."}
+            )
+        user = User(
+            username=validated_data.get("username"),
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
+            email=validated_data.get("email", ""),
+            is_active=validated_data.get("is_active", True),
+            is_superuser=validated_data.get("is_superuser", False),
+            is_staff=validated_data.get("is_superuser", False),
+        )
+        user.set_password(password)
+        user.save()
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", "")
+        # Campos básicos
+        for field in [
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "is_active",
+            "is_superuser",
+        ]:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+
+        # Se marcar superuser, garante is_staff
+        if "is_superuser" in validated_data:
+            instance.is_staff = bool(validated_data["is_superuser"])
+
+        # Troca de senha (opcional)
+        if password:
+            instance.set_password(password)
+
+        instance.save()
+        return instance
 
 
 class ActivateWithRobinhoSerializer(serializers.Serializer):

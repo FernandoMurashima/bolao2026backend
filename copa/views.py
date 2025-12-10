@@ -102,6 +102,14 @@ class MatchViewSet(viewsets.ModelViewSet):
         Atualiza APENAS o resultado oficial (home_score / away_score),
         ignorando o fato de o serializer poder ter esses campos como read_only.
         """
+
+        # 🔒 Só superusuário pode alterar resultado oficial
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "Apenas superusuários podem alterar resultados oficiais."},
+                status=403,
+            )
+
         instance = self.get_object()
 
         home_score = request.data.get("home_score", None)
@@ -216,13 +224,6 @@ class RankingView(APIView):
 
         ranking = list(data.values())
 
-        # Ordenação com critério de desempate:
-        # 1) total_points desc
-        # 2) quem acertou campeão primeiro
-        # 3) exact_scores desc
-        # 4) results desc
-        # 5) stage5_points desc
-        # 6) extras_points desc
         ranking.sort(
             key=lambda x: (
                 -x["total_points"],
@@ -234,7 +235,6 @@ class RankingView(APIView):
             )
         )
 
-        # posição
         for i, row in enumerate(ranking, start=1):
             row["position"] = i
 

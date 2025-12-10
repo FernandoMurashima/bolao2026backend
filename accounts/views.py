@@ -1,4 +1,5 @@
-from rest_framework import generics, status, permissions
+from django.contrib.auth import get_user_model
+from rest_framework import generics, status, permissions, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,10 +9,23 @@ from .serializers import (
     LoginSerializer,
     UserSerializer,
     ChangePasswordSerializer,
+    AdminUserSerializer,
 )
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+
+class IsSuperUser(permissions.BasePermission):
+    """
+    Permissão: apenas superuser.
+    """
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_superuser
+        )
 
 
 class ActivateWithRobinhoView(generics.CreateAPIView):
@@ -73,3 +87,14 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"detail": "Senha alterada com sucesso."})
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """
+    /api/accounts/users/  (GET, POST)
+    /api/accounts/users/<id>/  (GET, PUT, PATCH, DELETE)
+    Apenas superuser.
+    """
+    queryset = User.objects.all().order_by("username")
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsSuperUser]
