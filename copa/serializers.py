@@ -49,6 +49,9 @@ class MatchSerializer(serializers.ModelSerializer):
             "group_name",
             "home_score",
             "away_score",
+            "home_penalties",   # <<< NOVO
+            "away_penalties", 
+
         ]
         read_only_fields = ["home_score", "away_score", "tournament", "stage"]
 

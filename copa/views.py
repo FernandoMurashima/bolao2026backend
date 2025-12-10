@@ -99,8 +99,9 @@ class MatchViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         """
-        Atualiza APENAS o resultado oficial (home_score / away_score),
-        ignorando o fato de o serializer poder ter esses campos como read_only.
+        Atualiza APENAS o resultado oficial:
+        - home_score / away_score
+        - home_penalties / away_penalties (para fases eliminatórias)
         """
 
         # 🔒 Só superusuário pode alterar resultado oficial
@@ -114,8 +115,10 @@ class MatchViewSet(viewsets.ModelViewSet):
 
         home_score = request.data.get("home_score", None)
         away_score = request.data.get("away_score", None)
+        home_penalties = request.data.get("home_penalties", None)
+        away_penalties = request.data.get("away_penalties", None)
 
-        # Converte para int ou None
+        # Converte gols para int ou None
         if home_score in ("", None):
             instance.home_score = None
         else:
@@ -125,6 +128,17 @@ class MatchViewSet(viewsets.ModelViewSet):
             instance.away_score = None
         else:
             instance.away_score = int(away_score)
+
+        # Converte pênaltis para int ou None
+        if home_penalties in ("", None):
+            instance.home_penalties = None
+        else:
+            instance.home_penalties = int(home_penalties)
+
+        if away_penalties in ("", None):
+            instance.away_penalties = None
+        else:
+            instance.away_penalties = int(away_penalties)
 
         instance.save()
 

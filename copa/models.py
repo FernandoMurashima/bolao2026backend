@@ -15,18 +15,22 @@ class Tournament(models.Model):
 
 class Stage(models.Model):
     """
+    Ordem das fases:
+
     1 – Fase de grupos
-    2 – Oitavas
-    3 – Quartas
-    4 – Semifinais
-    5 – 3º lugar + Final
+    2 – Round-of-32
+    3 – Oitavas (Round-of-16)
+    4 – Quartas (Round-of-8)
+    5 – Semifinais (Round-of-4)
+    6 – 3º lugar + Final
     """
     ORDER_CHOICES = (
         (1, "Fase de grupos"),
-        (2, "Oitavas"),
-        (3, "Quartas"),
-        (4, "Semifinais"),
-        (5, "3º lugar + Final"),
+        (2, "Round-of-32"),
+        (3, "Oitavas de final"),
+        (4, "Quartas de final"),
+        (5, "Semifinais"),
+        (6, "3º lugar + Final"),
     )
 
     tournament = models.ForeignKey(
@@ -74,6 +78,10 @@ class Match(models.Model):
     # Resultado oficial (90min)
     home_score = models.PositiveSmallIntegerField(blank=True, null=True)
     away_score = models.PositiveSmallIntegerField(blank=True, null=True)
+
+    # Pênaltis – usados só em fases eliminatórias (order >= 2)
+    home_penalties = models.PositiveSmallIntegerField(blank=True, null=True)
+    away_penalties = models.PositiveSmallIntegerField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.home_team} x {self.away_team} ({self.stage})"
@@ -161,7 +169,10 @@ class Bet(models.Model):
         return real_sign == pred_sign and not self.is_exact_score()
 
     def points_stage5(self):
-        if self.match.stage.order != 5:
+        """
+        Continua o nome, mas agora considera a última fase (order=6).
+        """
+        if self.match.stage.order != 6:
             return 0
         return self.calculate_points()
 
